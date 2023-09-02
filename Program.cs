@@ -2,6 +2,8 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.DataProtection;
+const string AuthScheme = "cookie";
+
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -11,6 +13,14 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddAuthentication("cookie")
     .AddCookie("cookie"); // You can add multiple authentication schemes, but you need to specify one as default
     ; // Add cookie authentication
+builder.Services.AddAuthorization(builder =>
+{
+    builder.AddPolicy("eur", policy =>
+    {
+        policy.RequireAuthenticatedUser().AddAuthenticationSchemes(AuthScheme) // the name of the authentication scheme
+            .RequireClaim("passport_type", "eur");
+    });
+});
 builder.Logging.AddConsole();
 var app = builder.Build();
 
@@ -30,33 +40,40 @@ var app = builder.Build();
 // });
 
 app.UseAuthentication();
-
+app.UseAuthorization();
 
 
 app.MapGet("/", () => "Hello World!");
-app.MapGet("/username", (HttpContext ctx, IDataProtectionProvider idp) =>
+app.MapGet("/username", () =>
 {
     return "Hello world"; 
 });
+
+app.MapGet("/unsecure", (HttpContext ctx) =>
+{
+    return ctx.User.FindFirst("usr")?.Value ?? "empty";
+});
+
+app.MapGet("/logout", async (HttpContext context) =>
+{
+    await context.SignOutAsync(AuthScheme);
+    return "Sign out successfully";
+});
+
+
+app.MapGet("/",(HttpContext context) =>
+{
+}).RequireAuthorization("eur");
+
 app.MapGet("/login", async (HttpContext ctx) =>
 {
-    var logger = ctx.RequestServices.GetRequiredService<ILogger<Program>>();
-    var claims = new List<Claim>
-    {
-        new Claim(ClaimTypes.Name, "John Doe"),
-        new Claim(ClaimTypes.Email, "john@example.com"),
-        new Claim(ClaimTypes.Role, "User")
-    };
-    foreach (var VARIABLE in claims)
-    {
-        logger.Log(LogLevel.Information, VARIABLE.ToString());
-    }
-    
-    var identity = new ClaimsIdentity(claims, "cookie");
+    var claims = new List<Claim>();
+    claims.Add(new Claim("usr", "xuanan"));
+    claims.Add(new Claim("passport_type", "eur" ));
+    var identity = new ClaimsIdentity(claims, AuthScheme);
     var principal = new ClaimsPrincipal(identity);
-
-    await ctx.SignInAsync("cookie", principal);
-    return "Logged in successfully";
+    await ctx.SignInAsync(AuthScheme, principal);
+    return "Sign in successfully";
 });
 
 app.Run();
